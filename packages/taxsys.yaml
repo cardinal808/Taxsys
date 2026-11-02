@@ -57,13 +57,21 @@ template:
           live_tijd: "{{ (state_attr('sensor.taxsys_taxi', 'middag') or {}).get('live_tijd') }}"
 
   - binary_sensor:
-      # Aan op werkdagen tussen 07:15–08:45 en 13:30–15:00 (voor de zichtbaarheid van de dashboardkaart)
+      # Voor de zichtbaarheid van de dashboardkaart. Aan op werkdagen met een rit vandaag:
+      #   ochtend: 07:15 tot 15 min na de geplande ophaaltijd (O-tijd)
+      #   middag:  13:30 tot 15 min na de geplande thuiskomst (A-tijd)
       - name: Taxsys taxi venster
         unique_id: taxsys_taxi_venster
         icon: mdi:clock-outline
         state: >
-          {% set t = now().strftime('%H:%M') %}
-          {{ now().weekday() < 5 and (('07:15' <= t < '08:45') or ('13:30' <= t < '15:00')) }}
+          {% set n = now() %}
+          {% set o = states('sensor.taxsys_taxi_ophalen') | as_datetime(none) %}
+          {% set b = states('sensor.taxsys_taxi_thuisbrengen') | as_datetime(none) %}
+          {% set ochtend = o is not none and (o | as_local).date() == n.date()
+               and today_at('07:15') <= n < o + timedelta(minutes=15) %}
+          {% set middag = b is not none and (b | as_local).date() == n.date()
+               and today_at('13:30') <= n < b + timedelta(minutes=15) %}
+          {{ n.weekday() < 5 and (ochtend or middag) }}
 
 automation:
   - id: taxsys_vaker_verversen_rond_ritten
