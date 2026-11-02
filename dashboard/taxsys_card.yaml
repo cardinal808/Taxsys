@@ -1,0 +1,24 @@
+# Mushroom template card (HACS) – Taxi
+# Alleen zichtbaar als binary_sensor.taxsys_taxi_venster aan staat
+# (werkdagen 07:15–08:45 en 13:30–15:00).
+type: custom:mushroom-template-card
+entity: sensor.taxsys_taxi
+icon: mdi:taxi
+icon_color: >
+  {% set s = state_attr('sensor.taxsys_taxi_ophalen' if now().hour < 12 else 'sensor.taxsys_taxi_thuisbrengen', 'status') %}
+  {{ 'green' if s == 'Aanwezig' else 'orange' }}
+primary: Taxi
+secondary: >
+  {% set o = state_attr('sensor.taxsys_taxi_ophalen', 'tijd') %}
+  {% set b = state_attr('sensor.taxsys_taxi_thuisbrengen', 'tijd') %}
+  {% set rit = 'sensor.taxsys_taxi_ophalen' if now().hour < 12 else 'sensor.taxsys_taxi_thuisbrengen' %}
+  {% set c = state_attr(rit, 'chauffeur') or '' %}
+  {% set naam = (c.split(' - ')[1:] | join(' - ')) if ' - ' in c else c %}
+  Ophalen {{ o or '–' }} · Thuis {{ b or '–' }}{{ ' · ' ~ (naam | title) if naam }}
+multiline_secondary: true
+tap_action:
+  action: more-info
+visibility:
+  - condition: state
+    entity: binary_sensor.taxsys_taxi_venster
+    state: "on"

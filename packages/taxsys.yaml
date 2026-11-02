@@ -1,0 +1,96 @@
+# Package: Taxsys leerlingenvervoer
+# Plaats dit bestand in je packages-map (bijv. /config/packages/taxsys.yaml)
+# en het script op /config/taxsys/taxsys.py
+#
+# In /config/secrets.yaml (regels moeten helemaal links beginnen):
+#   taxsys_username: 'jouw-gebruikersnaam-of-email'
+#   taxsys_password: 'jouw-wachtwoord'
+#   taxsys_company: 'G-XXX'
+#   taxsys_klantnr: '0000000'
+
+command_line:
+  - sensor:
+      name: Taxsys taxi
+      unique_id: taxsys_taxi
+      command: "python3 /config/taxsys/taxsys.py"
+      command_timeout: 45
+      # Eigen polling vrijwel uit (1x per dag); verversen gebeurt via de automatisering
+      scan_interval: 86400
+      value_template: "{{ value_json.status }}"
+      json_attributes:
+        - bijgewerkt
+        - ochtend
+        - middag
+        - ritten
+        - fout
+
+template:
+  - sensor:
+      - name: Taxsys taxi ophalen
+        unique_id: taxsys_taxi_ophalen
+        icon: mdi:taxi
+        device_class: timestamp
+        availability: "{{ state_attr('sensor.taxsys_taxi', 'ochtend') is mapping }}"
+        state: "{{ state_attr('sensor.taxsys_taxi', 'ochtend').ophalen }}"
+        attributes:
+          tijd: "{{ (state_attr('sensor.taxsys_taxi', 'ochtend') or {}).get('o_tijd') }}"
+          dag: "{{ (state_attr('sensor.taxsys_taxi', 'ochtend') or {}).get('dag') }}"
+          naar: "{{ (state_attr('sensor.taxsys_taxi', 'ochtend') or {}).get('naar') }}"
+          status: "{{ (state_attr('sensor.taxsys_taxi', 'ochtend') or {}).get('status') }}"
+          chauffeur: "{{ (state_attr('sensor.taxsys_taxi', 'ochtend') or {}).get('chauffeur') }}"
+          live_locatie: "{{ (state_attr('sensor.taxsys_taxi', 'ochtend') or {}).get('live_locatie') }}"
+          live_tijd: "{{ (state_attr('sensor.taxsys_taxi', 'ochtend') or {}).get('live_tijd') }}"
+
+      - name: Taxsys taxi thuisbrengen
+        unique_id: taxsys_taxi_thuisbrengen
+        icon: mdi:home-clock
+        device_class: timestamp
+        availability: "{{ state_attr('sensor.taxsys_taxi', 'middag') is mapping }}"
+        state: "{{ state_attr('sensor.taxsys_taxi', 'middag').aankomst }}"
+        attributes:
+          tijd: "{{ (state_attr('sensor.taxsys_taxi', 'middag') or {}).get('a_tijd') }}"
+          dag: "{{ (state_attr('sensor.taxsys_taxi', 'middag') or {}).get('dag') }}"
+          naar: "{{ (state_attr('sensor.taxsys_taxi', 'middag') or {}).get('naar') }}"
+          status: "{{ (state_attr('sensor.taxsys_taxi', 'middag') or {}).get('status') }}"
+          chauffeur: "{{ (state_attr('sensor.taxsys_taxi', 'middag') or {}).get('chauffeur') }}"
+          live_locatie: "{{ (state_attr('sensor.taxsys_taxi', 'middag') or {}).get('live_locatie') }}"
+          live_tijd: "{{ (state_attr('sensor.taxsys_taxi', 'middag') or {}).get('live_tijd') }}"
+
+  - binary_sensor:
+      # Aan op werkdagen tussen 07:15–08:45 en 13:30–15:00 (voor de zichtbaarheid van de dashboardkaart)
+      - name: Taxsys taxi venster
+        unique_id: taxsys_taxi_venster
+        icon: mdi:clock-outline
+        state: >
+          {% set t = now().strftime('%H:%M') %}
+          {{ now().weekday() < 5 and (('07:15' <= t < '08:45') or ('13:30' <= t < '15:00')) }}
+
+automation:
+  - id: taxsys_vaker_verversen_rond_ritten
+    alias: "Taxsys: vaker verversen rond ritten"
+    description: "Alleen rond de ritten elke 5 min verversen, plus één keer vroeg in de ochtend."
+    mode: single
+    triggers:
+      - trigger: time_pattern
+        minutes: "/5"
+        id: interval
+      - trigger: time
+        at: "06:30:00"
+        id: ochtend
+    conditions:
+      - condition: time
+        weekday: [mon, tue, wed, thu, fri]
+      - condition: or
+        conditions:
+          - condition: trigger
+            id: ochtend
+          - condition: time
+            after: "07:15:00"
+            before: "08:45:00"
+          - condition: time
+            after: "13:30:00"
+            before: "15:00:00"
+    actions:
+      - action: homeassistant.update_entity
+        target:
+          entity_id: sensor.taxsys_taxi
